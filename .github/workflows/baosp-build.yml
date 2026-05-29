@@ -1,0 +1,354 @@
+name: BAOSP Full Build
+
+on:
+  workflow_dispatch:
+    inputs:
+      build_target:
+        description: 'AOSP build target (lunch target)'
+        required: false
+        default: 'aosp_x86_64-userdebug'
+      aosp_branch:
+        description: 'AOSP branch to build'
+        required: false
+        default: 'android-14.0.0_r1'
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Job 1: Build AOTTS TTS Engine APK
+  # ──────────────────────────────────────────────
+  build-aotts:
+    name: Build AOTTS TTS Engine
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout AOTTS repo
+        uses: actions/checkout@v4
+        with:
+          repository: tech-master33/aotts
+          path: aotts
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK
+        run: |
+          echo "y" | sdkmanager "ndk;23.1.7779620" "cmake;3.22.1"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/23.1.7779620" >> $GITHUB_ENV
+
+      - name: Clone SVOX Pico native source
+        run: |
+          mkdir -p aotts/src/main/cpp/pico
+          git clone --depth=1 https://android.googlesource.com/platform/external/svox \
+            aotts/src/main/cpp/pico_src || true
+          # Copy just the pico subfolder (the TTS engine source)
+          if [ -d aotts/src/main/cpp/pico_src/pico ]; then
+            cp -r aotts/src/main/cpp/pico_src/pico/* aotts/src/main/cpp/pico/
+          fi
+          rm -rf aotts/src/main/cpp/pico_src
+
+      - name: Download SVOX Pico language data files
+        run: |
+          mkdir -p aotts/src/main/assets/lang
+
+          # SVOX Pico language data (.bin files) from AOSP mirror
+          BASE_URL="https://raw.githubusercontent.com/lô/aosp-pico-lang/master"
+
+          # Try AOSP packages extractor (these files are Apache 2.0 licensed)
+          PICO_LANG_REPO="https://github.com/googlesamples/android-BluetoothLeGatt"
+
+          # Download from a known AOSP-sourced mirror of Pico data files
+          # These are the same files that ship in AOSP external/svox/pico/lang/
+          SVOX_RAW="https://android.googlesource.com/platform/external/svox/+archive/refs/heads/master/pico/lang.tar.gz"
+
+          echo "Fetching SVOX Pico language data from AOSP..."
+          curl -L "$SVOX_RAW" -o /tmp/pico_lang.tar.gz 2>/dev/null || true
+
+          if [ -f /tmp/pico_lang.tar.gz ] && [ -s /tmp/pico_lang.tar.gz ]; then
+            tar -xzf /tmp/pico_lang.tar.gz -C aotts/src/main/assets/lang/ 2>/dev/null || true
+            echo "Extracted language data from AOSP tarball"
+          fi
+
+          # Fallback: clone the SVOX external repo and grab lang files directly
+          if [ -z "$(ls -A aotts/src/main/assets/lang/*.bin 2>/dev/null)" ]; then
+            echo "Tarball method failed, trying direct clone..."
+            git clone --depth=1 --filter=blob:none --sparse \
+              https://android.googlesource.com/platform/external/svox \
+              /tmp/svox_clone || true
+
+            if [ -d /tmp/svox_clone ]; then
+              git -C /tmp/svox_clone sparse-checkout set pico/lang
+              git -C /tmp/svox_clone checkout || true
+              find /tmp/svox_clone/pico/lang -name "*.bin" -exec \
+                cp {} aotts/src/main/assets/lang/ \; 2>/dev/null || true
+            fi
+          fi
+
+          echo "Language files present:"
+          ls -lh aotts/src/main/assets/lang/ || echo "(none found — build will continue without them)"
+
+      - name: Grant Gradle execute permission
+        run: chmod +x aotts/gradlew
+
+      - name: Build AOTTS debug APK
+        working-directory: aotts
+        run: |
+          ./gradlew clean assembleDebug \
+            -Pandroid.ndkVersion=23.1.7779620 \
+            --no-daemon \
+            --stacktrace
+
+      - name: Build AOTTS release APK
+        working-directory: aotts
+        run: |
+          ./gradlew assembleRelease \
+            -Pandroid.ndkVersion=23.1.7779620 \
+            --no-daemon \
+            --stacktrace || echo "Release build failed (likely needs signing key) — using debug APK"
+
+      - name: Locate built APKs
+        run: |
+          find aotts/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
+          # Copy the best available APK to a known path for the AOSP job
+          DEBUG_APK=$(find aotts/build/outputs/apk/debug -name "*.apk" | head -1)
+          RELEASE_APK=$(find aotts/build/outputs/apk/release -name "*.apk" | head -1)
+          mkdir -p /tmp/aotts-output
+          if [ -n "$RELEASE_APK" ]; then
+            cp "$RELEASE_APK" /tmp/aotts-output/aotts.apk
+            echo "Using release APK"
+          elif [ -n "$DEBUG_APK" ]; then
+            cp "$DEBUG_APK" /tmp/aotts-output/aotts.apk
+            echo "Using debug APK"
+          fi
+
+      - name: Upload AOTTS APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: aotts-apk
+          path: /tmp/aotts-output/aotts.apk
+          retention-days: 30
+          if-no-files-found: warn
+
+  # ──────────────────────────────────────────────
+  # Job 2: Build full AOSP system image
+  # (Downloads AOTTS APK from Job 1 and places it
+  #  into the AOSP tree before the system build)
+  # ──────────────────────────────────────────────
+  build-aosp:
+    name: Build AOSP System Image
+    runs-on: ubuntu-22.04
+    needs: build-aotts
+
+    # AOSP builds need a lot of disk and RAM.
+    # GitHub-hosted runners give 14GB RAM and ~14GB disk by default.
+    # The build caches AOSP source across runs to save time.
+
+    steps:
+      - name: Checkout BAOSP repo
+        uses: actions/checkout@v4
+        with:
+          path: baosp
+
+      - name: Free up disk space
+        run: |
+          # Remove large pre-installed packages we don't need
+          sudo apt-get remove -y '^dotnet-.*' '^llvm-.*' 'php.*' \
+            azure-cli google-cloud-sdk google-chrome-stable firefox \
+            powershell mono-devel snapd || true
+          sudo apt-get autoremove -y
+          sudo apt-get clean
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc \
+            /usr/local/share/boost /opt/hostedtoolcache/CodeQL
+          df -h
+
+      - name: Install AOSP build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            openjdk-11-jdk \
+            git-core gnupg flex bison \
+            build-essential zip curl zlib1g-dev \
+            gcc-multilib g++-multilib libc6-dev-i386 \
+            lib32ncurses5-dev x11proto-core-dev libx11-dev \
+            lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip \
+            libncurses5 libncurses5-dev bc rsync wget python3 \
+            python3-pip repo
+
+      - name: Install repo tool (if not from apt)
+        run: |
+          if ! command -v repo &>/dev/null; then
+            mkdir -p ~/.bin
+            curl https://storage.googleapis.com/git-repo-downloads/repo > ~/.bin/repo
+            chmod a+x ~/.bin/repo
+            echo "$HOME/.bin" >> $GITHUB_PATH
+          fi
+          repo version
+
+      - name: Configure Git for repo
+        run: |
+          git config --global user.email "baosp-builder@github-actions.local"
+          git config --global user.name "BAOSP Builder"
+          git config --global color.ui false
+
+      - name: Cache AOSP source
+        id: aosp-cache
+        uses: actions/cache@v4
+        with:
+          path: aosp-source
+          key: aosp-source-${{ github.event.inputs.aosp_branch || 'android-14.0.0_r1' }}
+          restore-keys: |
+            aosp-source-
+
+      - name: Initialize AOSP repo
+        if: steps.aosp-cache.outputs.cache-hit != 'true'
+        run: |
+          mkdir -p aosp-source
+          cd aosp-source
+          BRANCH="${{ github.event.inputs.aosp_branch || 'android-14.0.0_r1' }}"
+          repo init \
+            -u https://android.googlesource.com/platform/manifest \
+            -b "$BRANCH" \
+            --depth=1 \
+            --no-clone-bundle
+          echo "Initialized AOSP repo for branch: $BRANCH"
+
+      - name: Sync AOSP source
+        run: |
+          cd aosp-source
+          repo sync \
+            -c \
+            -j$(nproc) \
+            --no-tags \
+            --no-clone-bundle \
+            --fail-fast \
+            --force-sync
+          echo "AOSP sync complete"
+          df -h
+
+      - name: Download AOTTS APK from previous job
+        uses: actions/download-artifact@v4
+        with:
+          name: aotts-apk
+          path: /tmp/aotts-output
+
+      - name: Place AOTTS into AOSP tree
+        run: |
+          AOTTS_APK="/tmp/aotts-output/aotts.apk"
+
+          if [ ! -f "$AOTTS_APK" ]; then
+            echo "WARNING: AOTTS APK not found — skipping TTS integration"
+            exit 0
+          fi
+
+          # Place the APK under AOSP's packages/apps so Soong can pick it up
+          DEST_DIR="aosp-source/packages/apps/AoTTS"
+          mkdir -p "$DEST_DIR"
+
+          cp "$AOTTS_APK" "$DEST_DIR/AoTTS.apk"
+
+          # Write an Android.bp so AOSP includes it as a prebuilt app
+          cat > "$DEST_DIR/Android.bp" << 'EOF'
+android_app_import {
+    name: "AoTTS",
+    apk: "AoTTS.apk",
+    presigned: true,
+    dex_preopt: {
+        enabled: false,
+    },
+    product_specific: true,
+}
+EOF
+
+          echo "AOTTS placed at $DEST_DIR"
+          ls -lh "$DEST_DIR"
+
+      - name: Apply BAOSP accessibility patches
+        run: |
+          cd aosp-source
+          PATCH_DIR="../baosp/patches"
+          if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch &>/dev/null; then
+            for patch in "$PATCH_DIR"/*.patch; do
+              echo "Applying patch: $patch"
+              patch -p1 < "$patch" || {
+                echo "WARNING: patch $patch failed to apply cleanly — skipping"
+              }
+            done
+          else
+            echo "No patches found in $PATCH_DIR — skipping patch step"
+          fi
+
+      - name: Copy BAOSP device overlays
+        run: |
+          if [ -d baosp/device ]; then
+            cp -r baosp/device/* aosp-source/device/
+            echo "Copied BAOSP device overlays"
+          else
+            echo "No device overlays found — skipping"
+          fi
+
+      - name: Set up build environment and build
+        run: |
+          cd aosp-source
+          TARGET="${{ github.event.inputs.build_target || 'aosp_x86_64-userdebug' }}"
+
+          # Source the AOSP build environment
+          source build/envsetup.sh
+
+          # Select the build target
+          lunch "$TARGET"
+
+          echo "Build target: $TARGET"
+          echo "Available CPUs: $(nproc)"
+          df -h
+
+          # Build the system image
+          # m = make, -j = parallel jobs
+          # Using a slightly conservative job count to avoid OOM
+          m -j$(($(nproc) - 1)) systemimage 2>&1 | tee build.log
+
+          echo "Build finished"
+          df -h
+
+      - name: Collect build artifacts
+        if: always()
+        run: |
+          DEVICE=$(cd aosp-source && source build/envsetup.sh 2>/dev/null && \
+            get_build_var TARGET_DEVICE 2>/dev/null || echo "generic_x86_64")
+          OUT_DIR="aosp-source/out/target/product/$DEVICE"
+
+          mkdir -p /tmp/baosp-images
+
+          for img in system.img boot.img recovery.img userdata.img ramdisk.img; do
+            if [ -f "$OUT_DIR/$img" ]; then
+              cp "$OUT_DIR/$img" /tmp/baosp-images/
+              echo "Collected: $img ($(du -sh "$OUT_DIR/$img" | cut -f1))"
+            fi
+          done
+
+          # Also grab the build log
+          [ -f aosp-source/build.log ] && cp aosp-source/build.log /tmp/baosp-images/
+
+          ls -lh /tmp/baosp-images/
+
+      - name: Upload BAOSP system images
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: baosp-system-images
+          path: /tmp/baosp-images/
+          retention-days: 30
+          if-no-files-found: warn
+
+      - name: Upload build log on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: aosp-source/build.log
+          retention-days: 7
+          if-no-files-found: ignore
