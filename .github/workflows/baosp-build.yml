@@ -362,6 +362,63 @@ EOF
             echo "No device overlays — skipping"
           fi
 
+      - name: Enable screen reader and TTS as system defaults
+        run: |
+          # This overlay patches SettingsProvider's default values so that
+          # on first boot the screen reader is already on and AOTTS is the
+          # default TTS engine — no manual setup needed after flashing.
+
+          OVERLAY_DIR="aosp-source/frameworks/base/packages/SettingsProvider/res/values"
+          mkdir -p "$OVERLAY_DIR"
+
+          # Write (or overwrite) the defaults file with our accessibility settings
+          # We append to the existing file if present, otherwise create it.
+          DEFAULTS_FILE="$OVERLAY_DIR/baosp_accessibility_defaults.xml"
+
+          cat > "$DEFAULTS_FILE" << 'EOF'
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+
+    <!-- Enable Android accessibility framework on first boot -->
+    <integer name="def_accessibility_enabled">1</integer>
+
+    <!-- Enable the BAOSP screen reader service by default -->
+    <!-- Format: packageName/fully.qualified.ServiceClassName -->
+    <string name="def_enabled_accessibility_services" translatable="false"
+        >com.example.andrd/com.example.andrd.ScreenReaderService</string>
+
+    <!-- Set AOTTS (SVOX Pico) as the default TTS engine -->
+    <string name="def_tts_default_synth" translatable="false"
+        >com.example.picottsengine</string>
+
+    <!-- Default TTS speech rate (100 = normal speed) -->
+    <integer name="def_tts_default_rate">100</integer>
+
+    <!-- Default TTS pitch (100 = normal pitch) -->
+    <integer name="def_tts_default_pitch">100</integer>
+
+    <!-- Enable touch exploration (required for screen reader gestures) -->
+    <integer name="def_touch_exploration_enabled">1</integer>
+
+    <!-- Keep screen on during accessibility setup -->
+    <integer name="def_accessibility_script_injection">0</integer>
+
+</resources>
+EOF
+
+          echo "Accessibility defaults written to $DEFAULTS_FILE"
+
+          # Also write a build.prop fragment to set TTS defaults at the
+          # system property level as a belt-and-suspenders fallback.
+          BUILDPROP_EXTRA="aosp-source/device/baosp_accessibility.prop"
+          cat > "$BUILDPROP_EXTRA" << 'EOF'
+# BAOSP: accessibility defaults
+ro.product.accessibility.screenreader=com.example.andrd/com.example.andrd.ScreenReaderService
+ro.product.tts.default_engine=com.example.picottsengine
+EOF
+
+          echo "Build prop fragment written to $BUILDPROP_EXTRA"
+
       - name: Build AOSP system image
         run: |
           cd aosp-source
