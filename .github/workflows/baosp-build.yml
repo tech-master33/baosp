@@ -14,7 +14,72 @@ on:
 
 jobs:
   # ──────────────────────────────────────────────
-  # Job 1: Build AOTTS TTS Engine APK
+  # Job 1: Build andrdscren Screen Reader APK
+  # ──────────────────────────────────────────────
+  build-screenreader:
+    name: Build Screen Reader (andrdscren)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout andrdscren repo
+        uses: actions/checkout@v4
+        with:
+          repository: tech-master33/andrdscren
+          path: andrdscren
+
+      - name: Set up Java 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant Gradle execute permission
+        run: chmod +x andrdscren/gradlew
+
+      - name: Build screen reader debug APK
+        working-directory: andrdscren
+        run: |
+          ./gradlew clean assembleDebug \
+            --no-daemon \
+            --stacktrace
+
+      - name: Build screen reader release APK
+        working-directory: andrdscren
+        run: |
+          ./gradlew assembleRelease \
+            --no-daemon \
+            --stacktrace || echo "Release build failed (likely needs signing key) — using debug APK"
+
+      - name: Collect screen reader APK
+        run: |
+          mkdir -p /tmp/screenreader-output
+          RELEASE=$(find andrdscren/app/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
+          DEBUG=$(find andrdscren/app/build/outputs/apk/debug -name "*.apk" 2>/dev/null | head -1)
+          if [ -n "$RELEASE" ]; then
+            cp "$RELEASE" /tmp/screenreader-output/andrdscren.apk
+            echo "Using release APK: $RELEASE"
+          elif [ -n "$DEBUG" ]; then
+            cp "$DEBUG" /tmp/screenreader-output/andrdscren.apk
+            echo "Using debug APK: $DEBUG"
+          else
+            echo "ERROR: No APK found"
+            exit 1
+          fi
+          ls -lh /tmp/screenreader-output/
+
+      - name: Upload screen reader APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: andrdscren-apk
+          path: /tmp/screenreader-output/andrdscren.apk
+          retention-days: 30
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # Job 2: Build AOTTS TTS Engine APK
   # ──────────────────────────────────────────────
   build-aotts:
     name: Build AOTTS TTS Engine
@@ -44,9 +109,9 @@ jobs:
       - name: Clone SVOX Pico native source
         run: |
           mkdir -p aotts/src/main/cpp/pico
-          git clone --depth=1 https://android.googlesource.com/platform/external/svox \
+          git clone --depth=1 \
+            https://android.googlesource.com/platform/external/svox \
             aotts/src/main/cpp/pico_src || true
-          # Copy just the pico subfolder (the TTS engine source)
           if [ -d aotts/src/main/cpp/pico_src/pico ]; then
             cp -r aotts/src/main/cpp/pico_src/pico/* aotts/src/main/cpp/pico/
           fi
@@ -56,14 +121,6 @@ jobs:
         run: |
           mkdir -p aotts/src/main/assets/lang
 
-          # SVOX Pico language data (.bin files) from AOSP mirror
-          BASE_URL="https://raw.githubusercontent.com/lô/aosp-pico-lang/master"
-
-          # Try AOSP packages extractor (these files are Apache 2.0 licensed)
-          PICO_LANG_REPO="https://github.com/googlesamples/android-BluetoothLeGatt"
-
-          # Download from a known AOSP-sourced mirror of Pico data files
-          # These are the same files that ship in AOSP external/svox/pico/lang/
           SVOX_RAW="https://android.googlesource.com/platform/external/svox/+archive/refs/heads/master/pico/lang.tar.gz"
 
           echo "Fetching SVOX Pico language data from AOSP..."
@@ -74,23 +131,22 @@ jobs:
             echo "Extracted language data from AOSP tarball"
           fi
 
-          # Fallback: clone the SVOX external repo and grab lang files directly
+          # Fallback: sparse clone just the lang folder
           if [ -z "$(ls -A aotts/src/main/assets/lang/*.bin 2>/dev/null)" ]; then
-            echo "Tarball method failed, trying direct clone..."
+            echo "Tarball failed, trying sparse clone..."
             git clone --depth=1 --filter=blob:none --sparse \
               https://android.googlesource.com/platform/external/svox \
               /tmp/svox_clone || true
-
             if [ -d /tmp/svox_clone ]; then
               git -C /tmp/svox_clone sparse-checkout set pico/lang
               git -C /tmp/svox_clone checkout || true
-              find /tmp/svox_clone/pico/lang -name "*.bin" -exec \
-                cp {} aotts/src/main/assets/lang/ \; 2>/dev/null || true
+              find /tmp/svox_clone/pico/lang -name "*.bin" \
+                -exec cp {} aotts/src/main/assets/lang/ \; 2>/dev/null || true
             fi
           fi
 
-          echo "Language files present:"
-          ls -lh aotts/src/main/assets/lang/ || echo "(none found — build will continue without them)"
+          echo "Language files:"
+          ls -lh aotts/src/main/assets/lang/ || echo "(none — build continues without them)"
 
       - name: Grant Gradle execute permission
         run: chmod +x aotts/gradlew
@@ -109,24 +165,23 @@ jobs:
           ./gradlew assembleRelease \
             -Pandroid.ndkVersion=23.1.7779620 \
             --no-daemon \
-            --stacktrace || echo "Release build failed (likely needs signing key) — using debug APK"
+            --stacktrace || echo "Release build failed (needs signing key) — using debug APK"
 
-      - name: Locate built APKs
+      - name: Collect AOTTS APK
         run: |
-          find aotts/build/outputs/apk -name "*.apk" -exec ls -lh {} \;
-          # Copy the best available APK to a known path for the AOSP job
-          DEBUG_APK=$(find aotts/build/outputs/apk/debug -name "*.apk" | head -1)
-          RELEASE_APK=$(find aotts/build/outputs/apk/release -name "*.apk" | head -1)
           mkdir -p /tmp/aotts-output
-          if [ -n "$RELEASE_APK" ]; then
-            cp "$RELEASE_APK" /tmp/aotts-output/aotts.apk
+          RELEASE=$(find aotts/build/outputs/apk/release -name "*.apk" 2>/dev/null | head -1)
+          DEBUG=$(find aotts/build/outputs/apk/debug -name "*.apk" 2>/dev/null | head -1)
+          if [ -n "$RELEASE" ]; then
+            cp "$RELEASE" /tmp/aotts-output/aotts.apk
             echo "Using release APK"
-          elif [ -n "$DEBUG_APK" ]; then
-            cp "$DEBUG_APK" /tmp/aotts-output/aotts.apk
+          elif [ -n "$DEBUG" ]; then
+            cp "$DEBUG" /tmp/aotts-output/aotts.apk
             echo "Using debug APK"
           fi
+          ls -lh /tmp/aotts-output/
 
-      - name: Upload AOTTS APK artifact
+      - name: Upload AOTTS APK
         uses: actions/upload-artifact@v4
         with:
           name: aotts-apk
@@ -135,18 +190,14 @@ jobs:
           if-no-files-found: warn
 
   # ──────────────────────────────────────────────
-  # Job 2: Build full AOSP system image
-  # (Downloads AOTTS APK from Job 1 and places it
-  #  into the AOSP tree before the system build)
+  # Job 3: Build full AOSP system image
+  # Waits for both APKs, then places them in the
+  # AOSP tree before building the system image.
   # ──────────────────────────────────────────────
   build-aosp:
     name: Build AOSP System Image
     runs-on: ubuntu-22.04
-    needs: build-aotts
-
-    # AOSP builds need a lot of disk and RAM.
-    # GitHub-hosted runners give 14GB RAM and ~14GB disk by default.
-    # The build caches AOSP source across runs to save time.
+    needs: [build-screenreader, build-aotts]
 
     steps:
       - name: Checkout BAOSP repo
@@ -156,7 +207,6 @@ jobs:
 
       - name: Free up disk space
         run: |
-          # Remove large pre-installed packages we don't need
           sudo apt-get remove -y '^dotnet-.*' '^llvm-.*' 'php.*' \
             azure-cli google-cloud-sdk google-chrome-stable firefox \
             powershell mono-devel snapd || true
@@ -230,29 +280,52 @@ jobs:
           echo "AOSP sync complete"
           df -h
 
-      - name: Download AOTTS APK from previous job
+      - name: Download screen reader APK
+        uses: actions/download-artifact@v4
+        with:
+          name: andrdscren-apk
+          path: /tmp/screenreader-output
+
+      - name: Download AOTTS APK
         uses: actions/download-artifact@v4
         with:
           name: aotts-apk
           path: /tmp/aotts-output
 
-      - name: Place AOTTS into AOSP tree
+      - name: Place screen reader into AOSP tree
         run: |
-          AOTTS_APK="/tmp/aotts-output/aotts.apk"
-
-          if [ ! -f "$AOTTS_APK" ]; then
-            echo "WARNING: AOTTS APK not found — skipping TTS integration"
-            exit 0
+          APK="/tmp/screenreader-output/andrdscren.apk"
+          if [ ! -f "$APK" ]; then
+            echo "WARNING: Screen reader APK not found — skipping"
+          else
+            DEST="aosp-source/packages/apps/Andrdscren"
+            mkdir -p "$DEST"
+            cp "$APK" "$DEST/Andrdscren.apk"
+            cat > "$DEST/Android.bp" << 'EOF'
+android_app_import {
+    name: "Andrdscren",
+    apk: "Andrdscren.apk",
+    presigned: true,
+    dex_preopt: {
+        enabled: false,
+    },
+    product_specific: true,
+}
+EOF
+            echo "Screen reader placed at $DEST"
+            ls -lh "$DEST"
           fi
 
-          # Place the APK under AOSP's packages/apps so Soong can pick it up
-          DEST_DIR="aosp-source/packages/apps/AoTTS"
-          mkdir -p "$DEST_DIR"
-
-          cp "$AOTTS_APK" "$DEST_DIR/AoTTS.apk"
-
-          # Write an Android.bp so AOSP includes it as a prebuilt app
-          cat > "$DEST_DIR/Android.bp" << 'EOF'
+      - name: Place AOTTS into AOSP tree
+        run: |
+          APK="/tmp/aotts-output/aotts.apk"
+          if [ ! -f "$APK" ]; then
+            echo "WARNING: AOTTS APK not found — skipping"
+          else
+            DEST="aosp-source/packages/apps/AoTTS"
+            mkdir -p "$DEST"
+            cp "$APK" "$DEST/AoTTS.apk"
+            cat > "$DEST/Android.bp" << 'EOF'
 android_app_import {
     name: "AoTTS",
     apk: "AoTTS.apk",
@@ -263,9 +336,9 @@ android_app_import {
     product_specific: true,
 }
 EOF
-
-          echo "AOTTS placed at $DEST_DIR"
-          ls -lh "$DEST_DIR"
+            echo "AOTTS placed at $DEST"
+            ls -lh "$DEST"
+          fi
 
       - name: Apply BAOSP accessibility patches
         run: |
@@ -274,12 +347,10 @@ EOF
           if [ -d "$PATCH_DIR" ] && ls "$PATCH_DIR"/*.patch &>/dev/null; then
             for patch in "$PATCH_DIR"/*.patch; do
               echo "Applying patch: $patch"
-              patch -p1 < "$patch" || {
-                echo "WARNING: patch $patch failed to apply cleanly — skipping"
-              }
+              patch -p1 < "$patch" || echo "WARNING: $patch failed to apply — skipping"
             done
           else
-            echo "No patches found in $PATCH_DIR — skipping patch step"
+            echo "No patches found — skipping"
           fi
 
       - name: Copy BAOSP device overlays
@@ -288,30 +359,19 @@ EOF
             cp -r baosp/device/* aosp-source/device/
             echo "Copied BAOSP device overlays"
           else
-            echo "No device overlays found — skipping"
+            echo "No device overlays — skipping"
           fi
 
-      - name: Set up build environment and build
+      - name: Build AOSP system image
         run: |
           cd aosp-source
           TARGET="${{ github.event.inputs.build_target || 'aosp_x86_64-userdebug' }}"
-
-          # Source the AOSP build environment
           source build/envsetup.sh
-
-          # Select the build target
           lunch "$TARGET"
-
-          echo "Build target: $TARGET"
-          echo "Available CPUs: $(nproc)"
+          echo "Building target: $TARGET with $(($(nproc) - 1)) jobs"
           df -h
-
-          # Build the system image
-          # m = make, -j = parallel jobs
-          # Using a slightly conservative job count to avoid OOM
           m -j$(($(nproc) - 1)) systemimage 2>&1 | tee build.log
-
-          echo "Build finished"
+          echo "Build complete"
           df -h
 
       - name: Collect build artifacts
@@ -319,20 +379,15 @@ EOF
         run: |
           DEVICE=$(cd aosp-source && source build/envsetup.sh 2>/dev/null && \
             get_build_var TARGET_DEVICE 2>/dev/null || echo "generic_x86_64")
-          OUT_DIR="aosp-source/out/target/product/$DEVICE"
-
+          OUT="aosp-source/out/target/product/$DEVICE"
           mkdir -p /tmp/baosp-images
-
           for img in system.img boot.img recovery.img userdata.img ramdisk.img; do
-            if [ -f "$OUT_DIR/$img" ]; then
-              cp "$OUT_DIR/$img" /tmp/baosp-images/
-              echo "Collected: $img ($(du -sh "$OUT_DIR/$img" | cut -f1))"
+            if [ -f "$OUT/$img" ]; then
+              cp "$OUT/$img" /tmp/baosp-images/
+              echo "Collected $img ($(du -sh "$OUT/$img" | cut -f1))"
             fi
           done
-
-          # Also grab the build log
           [ -f aosp-source/build.log ] && cp aosp-source/build.log /tmp/baosp-images/
-
           ls -lh /tmp/baosp-images/
 
       - name: Upload BAOSP system images
