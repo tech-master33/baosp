@@ -15,17 +15,26 @@ on:
 jobs:
   # ──────────────────────────────────────────────
   # Job 1: Build andrdscren Screen Reader APK
+  # Always pulls the latest commit from main.
   # ──────────────────────────────────────────────
   build-screenreader:
     name: Build Screen Reader (andrdscren)
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout andrdscren repo
+      - name: Checkout andrdscren — latest main
         uses: actions/checkout@v4
         with:
           repository: tech-master33/andrdscren
+          ref: main
+          fetch-depth: 0
           path: andrdscren
+
+      - name: Print latest commit being built
+        run: |
+          cd andrdscren
+          echo "Building andrdscren commit:"
+          git log -1 --format="%H  %s  (%ci)"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -39,19 +48,12 @@ jobs:
       - name: Grant Gradle execute permission
         run: chmod +x andrdscren/gradlew
 
-      - name: Build screen reader debug APK
+      - name: Build screen reader APK
         working-directory: andrdscren
         run: |
-          ./gradlew clean assembleDebug \
+          ./gradlew clean assembleDebug assembleRelease \
             --no-daemon \
-            --stacktrace
-
-      - name: Build screen reader release APK
-        working-directory: andrdscren
-        run: |
-          ./gradlew assembleRelease \
-            --no-daemon \
-            --stacktrace || echo "Release build failed (likely needs signing key) — using debug APK"
+            --stacktrace || ./gradlew clean assembleDebug --no-daemon --stacktrace
 
       - name: Collect screen reader APK
         run: |
@@ -80,17 +82,26 @@ jobs:
 
   # ──────────────────────────────────────────────
   # Job 2: Build AOTTS TTS Engine APK
+  # Always pulls the latest commit from main.
   # ──────────────────────────────────────────────
   build-aotts:
     name: Build AOTTS TTS Engine
     runs-on: ubuntu-22.04
 
     steps:
-      - name: Checkout AOTTS repo
+      - name: Checkout AOTTS — latest main
         uses: actions/checkout@v4
         with:
           repository: tech-master33/aotts
+          ref: main
+          fetch-depth: 0
           path: aotts
+
+      - name: Print latest commit being built
+        run: |
+          cd aotts
+          echo "Building aotts commit:"
+          git log -1 --format="%H  %s  (%ci)"
 
       - name: Set up Java 17
         uses: actions/setup-java@v4
@@ -122,7 +133,6 @@ jobs:
           mkdir -p aotts/src/main/assets/lang
 
           SVOX_RAW="https://android.googlesource.com/platform/external/svox/+archive/refs/heads/master/pico/lang.tar.gz"
-
           echo "Fetching SVOX Pico language data from AOSP..."
           curl -L "$SVOX_RAW" -o /tmp/pico_lang.tar.gz 2>/dev/null || true
 
@@ -151,21 +161,17 @@ jobs:
       - name: Grant Gradle execute permission
         run: chmod +x aotts/gradlew
 
-      - name: Build AOTTS debug APK
+      - name: Build AOTTS APK
         working-directory: aotts
         run: |
+          ./gradlew clean assembleDebug assembleRelease \
+            -Pandroid.ndkVersion=23.1.7779620 \
+            --no-daemon \
+            --stacktrace || \
           ./gradlew clean assembleDebug \
             -Pandroid.ndkVersion=23.1.7779620 \
             --no-daemon \
             --stacktrace
-
-      - name: Build AOTTS release APK
-        working-directory: aotts
-        run: |
-          ./gradlew assembleRelease \
-            -Pandroid.ndkVersion=23.1.7779620 \
-            --no-daemon \
-            --stacktrace || echo "Release build failed (needs signing key) — using debug APK"
 
       - name: Collect AOTTS APK
         run: |
@@ -178,6 +184,9 @@ jobs:
           elif [ -n "$DEBUG" ]; then
             cp "$DEBUG" /tmp/aotts-output/aotts.apk
             echo "Using debug APK"
+          else
+            echo "ERROR: No APK found"
+            exit 1
           fi
           ls -lh /tmp/aotts-output/
 
@@ -187,12 +196,13 @@ jobs:
           name: aotts-apk
           path: /tmp/aotts-output/aotts.apk
           retention-days: 30
-          if-no-files-found: warn
+          if-no-files-found: error
 
   # ──────────────────────────────────────────────
   # Job 3: Build full AOSP system image
-  # Waits for both APKs, then places them in the
-  # AOSP tree before building the system image.
+  # Waits for both APKs, re-signs them with the
+  # AOSP platform key, drops them in as privileged
+  # system apps, and builds the system image.
   # ──────────────────────────────────────────────
   build-aosp:
     name: Build AOSP System Image
@@ -292,7 +302,65 @@ jobs:
           name: aotts-apk
           path: /tmp/aotts-output
 
-      - name: Place screen reader into AOSP tree
+      - name: Re-sign APKs with AOSP platform key
+        run: |
+          # The AOSP platform key lives in build/target/product/security/
+          # We use signapk.jar (built as part of AOSP host tools) to strip
+          # the existing debug/dev signature and replace it with the platform
+          # key so both apps run as system-signed privileged applications.
+
+          PLATFORM_PK8="aosp-source/build/target/product/security/platform.pk8"
+          PLATFORM_CERT="aosp-source/build/target/product/security/platform.x509.pem"
+
+          if [ ! -f "$PLATFORM_PK8" ] || [ ! -f "$PLATFORM_CERT" ]; then
+            echo "Platform keys not found — building signapk host tool first..."
+            cd aosp-source
+            source build/envsetup.sh
+            TARGET="${{ github.event.inputs.build_target || 'aosp_x86_64-userdebug' }}"
+            lunch "$TARGET"
+            make -j$(nproc) signapk 2>&1 | tail -20
+            cd ..
+          fi
+
+          SIGNAPK_JAR=$(find aosp-source/out/host -name "signapk.jar" 2>/dev/null | head -1)
+          if [ -z "$SIGNAPK_JAR" ]; then
+            echo "WARNING: signapk.jar not found — falling back to zipalign+apksigner"
+            # Use Android build tools apksigner as fallback
+            APKSIGNER=$(find $ANDROID_SDK_ROOT/build-tools -name "apksigner" 2>/dev/null | sort -V | tail -1)
+            if [ -n "$APKSIGNER" ]; then
+              echo "Using apksigner at: $APKSIGNER"
+              # Convert PK8 to PKCS12 for apksigner
+              openssl pkcs8 -in "$PLATFORM_PK8" -inform DER -nocrypt \
+                -out /tmp/platform.pem 2>/dev/null || true
+              if [ -f /tmp/platform.pem ]; then
+                for APK in /tmp/screenreader-output/andrdscren.apk /tmp/aotts-output/aotts.apk; do
+                  [ -f "$APK" ] || continue
+                  echo "Signing $APK with platform key..."
+                  "$APKSIGNER" sign \
+                    --key /tmp/platform.pem \
+                    --cert "$PLATFORM_CERT" \
+                    "$APK" && echo "Signed: $APK" || echo "WARNING: Could not sign $APK"
+                done
+              fi
+            else
+              echo "WARNING: No signing tool available — APKs will be re-signed by Soong via Android.bp certificate field"
+            fi
+          else
+            echo "Using signapk at: $SIGNAPK_JAR"
+            for APK in /tmp/screenreader-output/andrdscren.apk /tmp/aotts-output/aotts.apk; do
+              [ -f "$APK" ] || continue
+              SIGNED="${APK%.apk}-platform-signed.apk"
+              echo "Signing $APK with AOSP platform key..."
+              java -jar "$SIGNAPK_JAR" \
+                "$PLATFORM_CERT" "$PLATFORM_PK8" \
+                "$APK" "$SIGNED" && \
+                mv "$SIGNED" "$APK" && \
+                echo "Platform-signed: $APK" || \
+                echo "WARNING: signapk failed for $APK — Soong will re-sign via Android.bp"
+            done
+          fi
+
+      - name: Place screen reader into AOSP tree (privileged)
         run: |
           APK="/tmp/screenreader-output/andrdscren.apk"
           if [ ! -f "$APK" ]; then
@@ -301,22 +369,25 @@ jobs:
             DEST="aosp-source/packages/apps/Andrdscren"
             mkdir -p "$DEST"
             cp "$APK" "$DEST/Andrdscren.apk"
+            # certificate: "platform"  → Soong re-signs with platform key if not already done
+            # privileged: true         → installs to /system/priv-app for elevated permissions
+            #                            (required for AccessibilityService to work reliably)
             cat > "$DEST/Android.bp" << 'EOF'
 android_app_import {
     name: "Andrdscren",
     apk: "Andrdscren.apk",
-    presigned: true,
+    certificate: "platform",
+    privileged: true,
     dex_preopt: {
         enabled: false,
     },
-    product_specific: true,
 }
 EOF
-            echo "Screen reader placed at $DEST"
+            echo "Screen reader placed at $DEST (privileged, platform-signed)"
             ls -lh "$DEST"
           fi
 
-      - name: Place AOTTS into AOSP tree
+      - name: Place AOTTS into AOSP tree (privileged)
         run: |
           APK="/tmp/aotts-output/aotts.apk"
           if [ ! -f "$APK" ]; then
@@ -325,18 +396,20 @@ EOF
             DEST="aosp-source/packages/apps/AoTTS"
             mkdir -p "$DEST"
             cp "$APK" "$DEST/AoTTS.apk"
+            # TTS engines also benefit from platform signing to register
+            # as a trusted system TTS provider without user confirmation.
             cat > "$DEST/Android.bp" << 'EOF'
 android_app_import {
     name: "AoTTS",
     apk: "AoTTS.apk",
-    presigned: true,
+    certificate: "platform",
+    privileged: true,
     dex_preopt: {
         enabled: false,
     },
-    product_specific: true,
 }
 EOF
-            echo "AOTTS placed at $DEST"
+            echo "AOTTS placed at $DEST (privileged, platform-signed)"
             ls -lh "$DEST"
           fi
 
@@ -364,26 +437,19 @@ EOF
 
       - name: Enable screen reader and TTS as system defaults
         run: |
-          # This overlay patches SettingsProvider's default values so that
-          # on first boot the screen reader is already on and AOTTS is the
-          # default TTS engine — no manual setup needed after flashing.
-
+          # Patches SettingsProvider's default values so that on first boot
+          # the screen reader is already on and AOTTS is the default TTS
+          # engine — no manual setup needed after flashing.
           OVERLAY_DIR="aosp-source/frameworks/base/packages/SettingsProvider/res/values"
           mkdir -p "$OVERLAY_DIR"
 
-          # Write (or overwrite) the defaults file with our accessibility settings
-          # We append to the existing file if present, otherwise create it.
-          DEFAULTS_FILE="$OVERLAY_DIR/baosp_accessibility_defaults.xml"
-
-          cat > "$DEFAULTS_FILE" << 'EOF'
+          cat > "$OVERLAY_DIR/baosp_accessibility_defaults.xml" << 'EOF'
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
     <!-- Enable Android accessibility framework on first boot -->
     <integer name="def_accessibility_enabled">1</integer>
 
     <!-- Enable the BAOSP screen reader service by default -->
-    <!-- Format: packageName/fully.qualified.ServiceClassName -->
     <string name="def_enabled_accessibility_services" translatable="false"
         >com.example.andrd/com.example.andrd.ScreenReaderService</string>
 
@@ -391,33 +457,23 @@ EOF
     <string name="def_tts_default_synth" translatable="false"
         >com.example.picottsengine</string>
 
-    <!-- Default TTS speech rate (100 = normal speed) -->
+    <!-- Default TTS speech rate and pitch (100 = normal) -->
     <integer name="def_tts_default_rate">100</integer>
-
-    <!-- Default TTS pitch (100 = normal pitch) -->
     <integer name="def_tts_default_pitch">100</integer>
 
     <!-- Enable touch exploration (required for screen reader gestures) -->
     <integer name="def_touch_exploration_enabled">1</integer>
-
-    <!-- Keep screen on during accessibility setup -->
-    <integer name="def_accessibility_script_injection">0</integer>
-
 </resources>
 EOF
+          echo "Accessibility defaults written"
 
-          echo "Accessibility defaults written to $DEFAULTS_FILE"
-
-          # Also write a build.prop fragment to set TTS defaults at the
-          # system property level as a belt-and-suspenders fallback.
-          BUILDPROP_EXTRA="aosp-source/device/baosp_accessibility.prop"
-          cat > "$BUILDPROP_EXTRA" << 'EOF'
+          # Belt-and-suspenders: also set via build.prop fragment
+          cat > "aosp-source/device/baosp_accessibility.prop" << 'EOF'
 # BAOSP: accessibility defaults
 ro.product.accessibility.screenreader=com.example.andrd/com.example.andrd.ScreenReaderService
 ro.product.tts.default_engine=com.example.picottsengine
 EOF
-
-          echo "Build prop fragment written to $BUILDPROP_EXTRA"
+          echo "Build prop fragment written"
 
       - name: Build AOSP system image
         run: |
