@@ -3,7 +3,7 @@
 ## Who this project is for
 
 BAOSP is built by and for blind and disabled people.
-The screen reader, the TTS engine, and every line of accessibility code in this project
+The launcher, the screen reader, the TTS engine, and every line of accessibility code in this project
 exists because blind people need a phone OS that works for them.
 
 This community centers blind, Deafblind, low-vision, and otherwise disabled contributors.
@@ -82,7 +82,7 @@ Maintainers will review reports and take the following steps as appropriate:
 
 1. **Warning** — A private message explaining what was wrong and what is expected instead
 2. **Temporary ban** — Removal from the repository for a set period, with conditions for return
-3. **Permanent ban** — Removal from all three repositories with no path to return
+3. **Permanent ban** — Removal from all four repositories with no path to return
 
 The severity of the response matches the severity of the behavior.
 A first-time thoughtless comment gets a warning. A pattern of behavior or a serious incident
