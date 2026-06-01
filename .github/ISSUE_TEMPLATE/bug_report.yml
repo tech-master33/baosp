@@ -1,0 +1,102 @@
+name: Bug report
+description: Something in BAOSP is not working correctly
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for reporting this.
+        Please fill in each field below.
+        If the bug is specifically in the screen reader or TTS engine rather than the OS itself,
+        you may also report it at:
+        - Screen reader: github.com/tech-master33/andrdscren/issues
+        - TTS engine: github.com/tech-master33/aotts/issues
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part of BAOSP has the problem
+      options:
+        - Screen reader (andrdscren) — navigation, focus, announcements
+        - TTS engine (aotts) — speech quality, voice, language
+        - Both — screen reader and TTS together
+        - First boot setup — accessibility not enabled after flashing
+        - AOSP build — failed to build or flash
+        - Something else in the OS
+    validations:
+      required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened
+      description: Describe exactly what went wrong.
+      placeholder: "Example: After flashing the system image, the screen reader was not automatically turned on. I had to enable it manually."
+    validations:
+      required: true
+
+  - type: textarea
+    id: expected
+    attributes:
+      label: What you expected to happen
+      placeholder: "Example: The screen reader should be on and speaking from the first boot setup screen."
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: Number each step.
+      placeholder: |
+        1. Flash the system image using fastboot
+        2. Boot the device for the first time
+        3. Screen is silent — no speech from the screen reader
+    validations:
+      required: true
+
+  - type: dropdown
+    id: frequency
+    attributes:
+      label: How often does this happen
+      options:
+        - Every time I follow the steps above
+        - Most of the time
+        - Only sometimes — hard to reproduce
+        - Only happened once
+    validations:
+      required: true
+
+  - type: input
+    id: android-version
+    attributes:
+      label: Android version
+      description: "Find this in Settings → About phone → Android version"
+      placeholder: "Example: Android 14 (BAOSP build)"
+    validations:
+      required: true
+
+  - type: input
+    id: device
+    attributes:
+      label: Device model or emulator
+      placeholder: "Example: Pixel 4a — or — Android emulator x86_64"
+    validations:
+      required: true
+
+  - type: input
+    id: build-date
+    attributes:
+      label: BAOSP build date or nightly tag
+      description: If using the nightly APKs, the date shown in the release name. If you built from source, the date you ran the build.
+      placeholder: "Example: 2026-06-01 — or — built from source on 2026-05-28"
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Build logs, error messages, or other context.
+    validations:
+      required: false
