@@ -15,7 +15,7 @@ You do not need to write code to contribute. Here are all the ways you can help:
 3. Improve documentation — fix unclear steps or add missing information
 4. Test builds — install nightly APKs and report what you find
 5. Translate — help make BAOSP accessible in more languages
-6. Write code — fix bugs or add features in andrdscren, aotts, or the AOSP patches
+6. Write code — fix bugs or add features in andrdscren, aotts, aoler, or the AOSP patches
 
 ---
 
@@ -33,10 +33,11 @@ For code contributions to the AOSP build system, you also need:
 5. At least 16 GB of RAM
 6. A fast internet connection — the AOSP source download is about 100 GB
 
-For contributions to the apps only (andrdscren or aotts), see their own guides:
+For contributions to the apps only (andrdscren, aotts, or aoler), see their own guides:
 
 - Screen reader: github.com/tech-master33/andrdscren/blob/main/CONTRIBUTING.md
 - TTS engine: github.com/tech-master33/aotts/blob/main/CONTRIBUTING.md
+- Launcher: github.com/tech-master33/aoler/blob/main/CONTRIBUTING.md
 
 ---
 
@@ -56,6 +57,7 @@ For a bug report include:
 - Whether it happens every time or only sometimes
 - Your Android version and device model
 - Which version of the BAOSP APKs you installed (check the nightly release tag)
+- Which app is affected — andrdscren, aotts, aoler, or the OS itself
 
 For a feature request include:
 - What task are you trying to accomplish
@@ -181,6 +183,23 @@ Then:
 
 ---
 
+## Contributing code — app repos
+
+Each app has its own repository and its own contributor guide.
+Changes to the apps go into their own repos, not into baosp directly.
+
+| App | Repository | Contributor guide |
+|-----|-----------|------------------|
+| Screen reader | github.com/tech-master33/andrdscren | CONTRIBUTING.md in that repo |
+| TTS engine | github.com/tech-master33/aotts | CONTRIBUTING.md in that repo |
+| Home screen launcher | github.com/tech-master33/aoler | CONTRIBUTING.md in that repo |
+
+The nightly bundle in baosp picks up the latest `main` of each app repo automatically every night.
+You do not need to touch baosp to get an app change into the nightly release —
+merging your pull request in the app repo is enough.
+
+---
+
 ## Accessibility rules for all code contributions
 
 Every code change to this project must follow these rules.
@@ -216,6 +235,7 @@ If you have not heard back after a week, add a comment to the pull request to as
 - Issues: github.com/tech-master33/baosp/issues
 - Screen reader source: github.com/tech-master33/andrdscren
 - TTS engine source: github.com/tech-master33/aotts
+- Launcher source: github.com/tech-master33/aoler
 
 Open a discussion if you have a question. Describe what you are trying to do and where you are stuck.
 You do not need to have a solution — questions about how things work are welcome.
