@@ -1,0 +1,86 @@
+name: Feature request
+description: Suggest something new or improved for BAOSP
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thank you for suggesting an improvement.
+        You do not need to know how to code or know anything technical.
+        Just describe what you want to be able to do.
+
+  - type: dropdown
+    id: component
+    attributes:
+      label: Which part of BAOSP is this about
+      options:
+        - Screen reader (andrdscren) — how the phone describes what is on screen
+        - TTS engine (aotts) — the voice that speaks
+        - First boot experience — what happens when you first turn the phone on
+        - A new language or voice
+        - General OS accessibility
+        - Build system or developer tooling
+        - Documentation
+        - Something else
+    validations:
+      required: true
+
+  - type: textarea
+    id: problem
+    attributes:
+      label: What task are you trying to accomplish
+      description: Describe the real goal, not a technical solution. Start with "I want to be able to..."
+      placeholder: "Example: I want to be able to use the phone completely without a touchscreen — only physical buttons and a Bluetooth keyboard."
+    validations:
+      required: true
+
+  - type: textarea
+    id: workaround
+    attributes:
+      label: How you currently work around this
+      description: What do you do today? Say "There is no workaround" if you are blocked.
+      placeholder: "Example: I ask a sighted person to help me set up the phone each time I flash a new image."
+    validations:
+      required: true
+
+  - type: textarea
+    id: proposed
+    attributes:
+      label: What you would like to see
+      description: Describe the feature in plain language. How would it work?
+    validations:
+      required: false
+
+  - type: dropdown
+    id: impact
+    attributes:
+      label: How much does this affect your daily use
+      options:
+        - Blocks me completely — I cannot do what I need to do
+        - Major inconvenience — I lose significant time working around it
+        - Minor inconvenience — annoying but manageable
+        - Nice to have — would improve the experience but not urgent
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: affected-users
+    attributes:
+      label: Who would benefit from this
+      description: Check all that apply
+      options:
+        - label: Blind users (no usable vision)
+        - label: Low-vision users (some usable vision)
+        - label: Users who are Deafblind (no usable vision or hearing)
+        - label: Users with motor disabilities who cannot use a touchscreen
+        - label: Developers building on BAOSP
+    validations:
+      required: false
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else
+      description: Links to similar features in other apps or OSes, related issues, or any other context.
+    validations:
+      required: false
