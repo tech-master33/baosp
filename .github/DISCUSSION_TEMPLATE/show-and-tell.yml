@@ -1,0 +1,53 @@
+title: "[Show] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share how you use BAOSP or something you discovered that helps.
+        This could be your full phone setup, a workflow you built with the whole stack,
+        a device that works well, or a configuration tip.
+        It does not have to be technical. If it helps, it is worth sharing.
+
+  - type: textarea
+    id: what
+    attributes:
+      label: What are you sharing
+      description: Describe your setup, workflow, or discovery in plain language.
+      placeholder: "Example: I have been using BAOSP as my daily driver for three months on a Motorola G30. I use andrdscren for navigation, aotts with the English UK voice at 1.3x speed, and aoler as my launcher. Here is what works well and what I wish were different."
+    validations:
+      required: true
+
+  - type: textarea
+    id: setup
+    attributes:
+      label: Your setup
+      description: Device, Android version, and which BAOSP components you are using.
+      placeholder: |
+        Device: Motorola Moto G30
+        Android: 11
+        Screen reader: andrdscren (nightly from 2026-05-20)
+        TTS engine: aotts — English (UK) voice, 1.3x speech rate
+        Launcher: aoler
+    validations:
+      required: false
+
+  - type: textarea
+    id: tips
+    attributes:
+      label: Tips or steps others can follow
+      description: If you have specific settings or steps that made the difference, share them here.
+      placeholder: |
+        1. Install aotts first so the screen reader has a voice from the start
+        2. Then install andrdscren and enable it in Accessibility settings
+        3. Finally install aoler — Android will prompt you to set it as default when you press Home
+        4. In aotts settings, switch to English (UK) voice and increase rate to 1.3x
+    validations:
+      required: false
+
+  - type: input
+    id: device
+    attributes:
+      label: Device and Android version
+      placeholder: "Example: Motorola Moto G30, Android 11"
+    validations:
+      required: false

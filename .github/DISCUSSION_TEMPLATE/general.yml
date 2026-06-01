@@ -1,0 +1,34 @@
+title: ""
+body:
+  - type: markdown
+    attributes:
+      value: |
+        This is the place for general conversation about BAOSP — the Blind Android Open Source Project.
+        Talk about the project as a whole, share your experiences, or discuss anything related to
+        accessible Android. Conversations specific to one app may get a faster response in that app's repo:
+        — Screen reader: github.com/tech-master33/andrdscren/discussions
+        — TTS engine: github.com/tech-master33/aotts/discussions
+        — Launcher: github.com/tech-master33/aoler/discussions
+
+  - type: textarea
+    id: message
+    attributes:
+      label: What would you like to discuss
+      description: Write as much or as little as you like. Plain language is always fine.
+      placeholder: "Example: I have been running the full BAOSP stack for two weeks — andrdscren, aotts, and aoler together — and wanted to share how the experience compares to stock Android with TalkBack."
+    validations:
+      required: true
+
+  - type: dropdown
+    id: topic
+    attributes:
+      label: What is this about
+      options:
+        - Using the full BAOSP stack
+        - Device compatibility
+        - Comparing BAOSP to other accessible Android setups
+        - The project direction and roadmap
+        - Contributing to BAOSP
+        - Something else
+    validations:
+      required: false

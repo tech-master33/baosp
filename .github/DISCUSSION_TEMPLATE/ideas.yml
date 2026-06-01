@@ -1,0 +1,60 @@
+title: "[Idea] "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Share an idea for BAOSP — a new feature, a change to how the stack works together,
+        or something you wish the accessible Android experience did differently.
+        You do not need to know how to code. Just describe what you want to be able to do.
+        Ideas for a specific app are also welcome in that app's discussions:
+        — Screen reader: github.com/tech-master33/andrdscren/discussions
+        — TTS engine: github.com/tech-master33/aotts/discussions
+        — Launcher: github.com/tech-master33/aoler/discussions
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: What is your idea
+      description: Start with "I want to be able to..." or "It would help if..."
+      placeholder: "Example: I want to be able to set up a brand new Android phone using only BAOSP apps, without any sighted assistance at any point — including Wi-Fi setup, account sign-in, and app installation."
+    validations:
+      required: true
+
+  - type: textarea
+    id: why
+    attributes:
+      label: Why would this help
+      description: Describe the problem it solves or the task it makes easier.
+      placeholder: "Example: Every time I flash a new device I need a sighted person to help me past the initial setup screens. A fully accessible setup wizard would mean I can set up my own phone independently."
+    validations:
+      required: false
+
+  - type: dropdown
+    id: area
+    attributes:
+      label: Which part of BAOSP does this relate to
+      options:
+        - The full stack — affects all apps together
+        - andrdscren — screen reader
+        - aotts — TTS engine
+        - aoler — launcher
+        - First boot and setup experience
+        - AOSP build and OS patches
+        - Developer tooling
+        - Something else
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: who-benefits
+    attributes:
+      label: Who would benefit from this
+      description: Check all that apply
+      options:
+        - label: Blind users (no usable vision)
+        - label: Low-vision users (some usable vision)
+        - label: Deafblind users (no usable vision or hearing)
+        - label: Users with motor disabilities who cannot use a touchscreen
+        - label: Developers building on or contributing to BAOSP
+    validations:
+      required: false
