@@ -8,6 +8,10 @@ body:
         Thank you for suggesting an improvement.
         You do not need to know how to code or know anything technical.
         Just describe what you want to be able to do.
+        If the request is specific to one app, you may also file it there directly:
+        - Screen reader: github.com/tech-master33/andrdscren/issues
+        - TTS engine: github.com/tech-master33/aotts/issues
+        - Launcher: github.com/tech-master33/aoler/issues
 
   - type: dropdown
     id: component
@@ -16,6 +20,7 @@ body:
       options:
         - Screen reader (andrdscren) — how the phone describes what is on screen
         - TTS engine (aotts) — the voice that speaks
+        - Launcher (aoler) — home screen and app navigation
         - First boot experience — what happens when you first turn the phone on
         - A new language or voice
         - General OS accessibility

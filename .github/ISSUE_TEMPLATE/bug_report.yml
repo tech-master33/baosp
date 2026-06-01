@@ -7,10 +7,11 @@ body:
       value: |
         Thank you for reporting this.
         Please fill in each field below.
-        If the bug is specifically in the screen reader or TTS engine rather than the OS itself,
-        you may also report it at:
+        If the bug is specifically in one app rather than the OS itself,
+        you may also report it directly in that app's repo:
         - Screen reader: github.com/tech-master33/andrdscren/issues
         - TTS engine: github.com/tech-master33/aotts/issues
+        - Launcher: github.com/tech-master33/aoler/issues
 
   - type: dropdown
     id: component
@@ -19,7 +20,8 @@ body:
       options:
         - Screen reader (andrdscren) — navigation, focus, announcements
         - TTS engine (aotts) — speech quality, voice, language
-        - Both — screen reader and TTS together
+        - Launcher (aoler) — home screen, app drawer, gestures
+        - Both screen reader and TTS together
         - First boot setup — accessibility not enabled after flashing
         - AOSP build — failed to build or flash
         - Something else in the OS
