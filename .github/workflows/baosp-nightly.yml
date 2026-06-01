@@ -1,0 +1,246 @@
+name: BAOSP Nightly Bundle
+
+on:
+  # Runs every night at midnight UTC
+  schedule:
+    - cron: '0 0 * * *'
+  # Also runnable manually any time
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  # ──────────────────────────────────────────────
+  # Job 1: Build andrdscren screen reader APK
+  # ──────────────────────────────────────────────
+  build-screenreader:
+    name: Build Screen Reader (andrdscren)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout andrdscren — latest main
+        uses: actions/checkout@v4
+        with:
+          repository: tech-master33/andrdscren
+          ref: main
+          fetch-depth: 0
+          path: andrdscren
+
+      - name: Print commit being built
+        run: |
+          cd andrdscren
+          echo "andrdscren commit:"
+          git log -1 --format="%H  %s  (%ci)"
+          echo "ANDRDSCREN_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "ANDRDSCREN_MSG=$(git log -1 --format='%s')" >> $GITHUB_ENV
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant Gradle execute permission
+        run: chmod +x andrdscren/gradlew
+
+      - name: Build APK
+        working-directory: andrdscren
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK with version info
+        run: |
+          APK=$(find andrdscren/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          mkdir -p /tmp/bundle
+          cp "$APK" "/tmp/bundle/andrdscren-${{ env.ANDRDSCREN_SHA }}.apk"
+          echo "Screen reader APK ready: $(ls -lh /tmp/bundle/andrdscren-*.apk)"
+
+      - name: Upload screen reader APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-screenreader
+          path: /tmp/bundle/andrdscren-*.apk
+          retention-days: 3
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # Job 2: Build AOTTS TTS engine APK
+  # ──────────────────────────────────────────────
+  build-aotts:
+    name: Build TTS Engine (aotts)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout aotts — latest main
+        uses: actions/checkout@v4
+        with:
+          repository: tech-master33/aotts
+          ref: main
+          fetch-depth: 0
+          path: aotts
+
+      - name: Print commit being built
+        run: |
+          cd aotts
+          echo "aotts commit:"
+          git log -1 --format="%H  %s  (%ci)"
+          echo "AOTTS_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+          echo "AOTTS_MSG=$(git log -1 --format='%s')" >> $GITHUB_ENV
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android NDK and CMake
+        run: |
+          echo "y" | sdkmanager "ndk;23.1.7779620" "cmake;3.22.1"
+          echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/23.1.7779620" >> $GITHUB_ENV
+
+      - name: Download SVOX Pico native source
+        working-directory: aotts
+        run: |
+          mkdir -p src/main/cpp/pico
+          git clone --depth=1 \
+            https://android.googlesource.com/platform/external/svox \
+            /tmp/svox_src
+          cp -r /tmp/svox_src/pico/* src/main/cpp/pico/
+
+      - name: Download SVOX Pico language data
+        working-directory: aotts
+        run: |
+          mkdir -p src/main/assets/lang
+          SVOX_LANG="https://android.googlesource.com/platform/external/svox/+archive/refs/heads/master/pico/lang.tar.gz"
+          curl -L "$SVOX_LANG" -o /tmp/pico_lang.tar.gz 2>/dev/null || true
+          if [ -f /tmp/pico_lang.tar.gz ] && [ -s /tmp/pico_lang.tar.gz ]; then
+            tar -xzf /tmp/pico_lang.tar.gz -C src/main/assets/lang/ 2>/dev/null || true
+          fi
+          if [ -z "$(ls -A src/main/assets/lang/*.bin 2>/dev/null)" ]; then
+            git clone --depth=1 --filter=blob:none --sparse \
+              https://android.googlesource.com/platform/external/svox /tmp/svox_lang || true
+            if [ -d /tmp/svox_lang ]; then
+              git -C /tmp/svox_lang sparse-checkout set pico/lang
+              git -C /tmp/svox_lang checkout || true
+              find /tmp/svox_lang/pico/lang -name "*.bin" \
+                -exec cp {} src/main/assets/lang/ \; 2>/dev/null || true
+            fi
+          fi
+          echo "Language files:"; ls -lh src/main/assets/lang/
+
+      - name: Grant Gradle execute permission
+        run: chmod +x aotts/gradlew
+
+      - name: Build APK
+        working-directory: aotts
+        run: |
+          ./gradlew clean assembleDebug \
+            -Pandroid.ndkVersion=23.1.7779620 \
+            --no-daemon --stacktrace
+
+      - name: Rename APK with version info
+        run: |
+          APK=$(find aotts/build/outputs/apk/debug -name "*.apk" | head -1)
+          mkdir -p /tmp/bundle
+          cp "$APK" "/tmp/bundle/aotts-${{ env.AOTTS_SHA }}.apk"
+          echo "AOTTS APK ready: $(ls -lh /tmp/bundle/aotts-*.apk)"
+
+      - name: Upload AOTTS APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-aotts
+          path: /tmp/bundle/aotts-*.apk
+          retention-days: 3
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # Job 3: Publish combined nightly release
+  # Waits for both builds, then creates/updates a
+  # single "nightly" release in the baosp repo
+  # with both APKs attached.
+  # ──────────────────────────────────────────────
+  publish-nightly:
+    name: Publish Nightly Bundle Release
+    runs-on: ubuntu-22.04
+    needs: [build-screenreader, build-aotts]
+
+    steps:
+      - name: Download screen reader APK
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-screenreader
+          path: /tmp/release
+
+      - name: Download AOTTS APK
+        uses: actions/download-artifact@v4
+        with:
+          name: bundle-aotts
+          path: /tmp/release
+
+      - name: List release files
+        run: ls -lh /tmp/release/
+
+      - name: Get today's date
+        run: echo "TODAY=$(date -u '+%Y-%m-%d')" >> $GITHUB_ENV
+
+      - name: Delete existing nightly release (if any)
+        run: |
+          # Remove the old "nightly" tag+release so we always have exactly
+          # one nightly release pointing to the latest build.
+          RELEASE_ID=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/tech-master33/baosp/releases/tags/nightly" \
+            | tr ',' '\n' | grep '"id"' | head -1 | sed 's/[^0-9]//g')
+          if [ -n "$RELEASE_ID" ]; then
+            curl -s -X DELETE \
+              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+              -H "Accept: application/vnd.github+json" \
+              "https://api.github.com/repos/tech-master33/baosp/releases/$RELEASE_ID"
+            echo "Deleted old nightly release (ID $RELEASE_ID)"
+          fi
+          # Also delete the old tag
+          curl -s -X DELETE \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/tech-master33/baosp/git/refs/tags/nightly" || true
+
+      - name: Create nightly release with both APKs
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: nightly
+          name: "BAOSP Nightly — ${{ env.TODAY }}"
+          prerelease: true
+          body: |
+            ## BAOSP Nightly Bundle — ${{ env.TODAY }}
+
+            This release is updated automatically every night with the latest builds
+            of both the screen reader and TTS engine.
+
+            ### What's included
+
+            | File | Description |
+            |------|-------------|
+            | `andrdscren-*.apk` | Screen reader (andrdscren) |
+            | `aotts-*.apk` | TTS engine with SVOX Pico voice data |
+
+            ### How to install on your Android device
+
+            1. Download both APKs from the files below
+            2. Transfer them to your device (email, cloud drive, USB)
+            3. Install each APK — allow "unknown sources" if prompted
+            4. **Enable screen reader:** Settings → Accessibility → Downloaded services → andrdscren → turn on
+            5. **Set TTS engine:** Settings → Language & input → Text-to-speech output → select AOTTS Pico
+
+            ---
+            *Built automatically from the latest commit on each repo's main branch.*
+          files: |
+            /tmp/release/*.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
