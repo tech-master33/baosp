@@ -19,6 +19,24 @@ You do not need to write code to contribute. Here are all the ways you can help:
 
 ---
 
+## Claiming an issue
+
+If you want to work on an existing issue — especially one tagged `needs help` or `good first issue` — follow these steps first.
+
+1. Open the issue you want to work on
+2. Read the full description, including the "Where to start" section if there is one
+3. Leave a comment saying you would like to work on it — for example: "I'd like to take this on"
+4. Wait for a maintainer to reply — we will assign the issue to you and answer any questions
+5. Once assigned, follow the steps in this guide to fork, branch, make your change, and open a pull request
+
+This step matters because it avoids two people doing the same work at the same time.
+If you start without commenting and someone else is already working on the same issue, both contributions may need to be merged — which takes more effort for everyone.
+
+If you have been assigned an issue and decide you cannot continue, leave a comment to let us know.
+We will unassign it so someone else can pick it up.
+
+---
+
 ## Before you start
 
 You need:
