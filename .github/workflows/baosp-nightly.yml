@@ -322,15 +322,69 @@ jobs:
           if-no-files-found: error
 
   # ──────────────────────────────────────────────
-  # Job 6: Publish combined nightly release
-  # Waits for all 5 builds, then creates/updates a
+  # Job 6: Build baosp-braille APK
+  # ──────────────────────────────────────────────
+  build-baosp-braille:
+    name: Build Braille Driver (baosp-braille)
+    runs-on: ubuntu-22.04
+
+    steps:
+      - name: Checkout baosp-braille — latest main
+        uses: actions/checkout@v4
+        with:
+          repository: tech-master33/baosp-braille
+          ref: main
+          fetch-depth: 0
+          path: baosp-braille
+
+      - name: Print commit being built
+        run: |
+          cd baosp-braille
+          echo "baosp-braille commit:"
+          git log -1 --format="%H  %s  (%ci)"
+          echo "BRAILLE_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Grant Gradle execute permission
+        run: chmod +x baosp-braille/gradlew
+
+      - name: Build APK
+        working-directory: baosp-braille
+        run: ./gradlew clean assembleDebug --no-daemon --stacktrace
+
+      - name: Rename APK with version info
+        run: |
+          APK=$(find baosp-braille/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          mkdir -p /tmp/bundle
+          cp "$APK" "/tmp/bundle/baosp-braille-${{ env.BRAILLE_SHA }}.apk"
+          echo "Braille APK ready: $(ls -lh /tmp/bundle/baosp-braille-*.apk)"
+
+      - name: Upload baosp-braille APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: bundle-baosp-braille
+          path: /tmp/bundle/baosp-braille-*.apk
+          retention-days: 3
+          if-no-files-found: error
+
+  # ──────────────────────────────────────────────
+  # Job 7: Publish combined nightly release
+  # Waits for all 6 builds, then creates/updates a
   # single "nightly" release in the baosp repo
   # with all APKs attached.
   # ──────────────────────────────────────────────
   publish-nightly:
     name: Publish Nightly Bundle Release
     runs-on: ubuntu-22.04
-    needs: [build-screenreader, build-baosp-tts, build-baosp-clock, build-baosp-calc, build-baosp-panel]
+    needs: [build-screenreader, build-baosp-tts, build-baosp-clock, build-baosp-calc, build-baosp-panel, build-baosp-braille]
 
     steps:
       - name: Download all APKs
@@ -435,6 +489,7 @@ jobs:
             | `baosp-clock-*.apk` | Clock, alarm, timer, stopwatch |
             | `baosp-calc-*.apk` | Calculator with voice announcements |
             | `baosp-panel-*.apk` | Quick-access panel for speech rate, flashlight, volume |
+            | `baosp-braille-*.apk` | Bluetooth Braille display driver |
 
             ### How to install on your Android device
 
@@ -444,7 +499,8 @@ jobs:
             4. **Enable screen reader:** Settings → Accessibility → Downloaded services → baosp-screenreader → turn on
             5. **Set TTS engine:** Settings → Language & input → Text-to-speech output → select BAOSP TTS
             6. **Set launcher:** Press Home → select aoler → Always
-            7. **Other apps:** open from app drawer after install
+            7. **Braille display:** pair via Bluetooth, then enable BAOSP Braille in Accessibility settings
+            8. **Other apps:** open from app drawer after install
 
             ---
             *Built automatically from the latest commit on each repo's master/main branch.*
