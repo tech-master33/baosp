@@ -1,9 +1,10 @@
-dab13d963f5ef1f52dbaefb5e061f98dfcb5af65
 name: BAOSP Nightly Bundle
 
 on:
+  # Runs every night at midnight UTC
   schedule:
     - cron: '0 0 * * *'
+  # Also runnable manually any time
   workflow_dispatch:
 
 permissions:
@@ -11,24 +12,25 @@ permissions:
 
 jobs:
   # ──────────────────────────────────────────────
-  # Job 1: Build andrdscren screen reader APK
+  # Job 1: Build baosp-screenreader screen reader APK
   # ──────────────────────────────────────────────
   build-screenreader:
-    name: Build Screen Reader (andrdscren)
+    name: Build Screen Reader (baosp-screenreader)
     runs-on: ubuntu-22.04
+
     steps:
-      - name: Checkout andrdscren — latest main
+      - name: Checkout baosp-screenreader — latest main
         uses: actions/checkout@v4
         with:
-          repository: tech-master33/andrdscren
+          repository: tech-master33/baosp-screenreader
           ref: main
           fetch-depth: 0
-          path: andrdscren
+          path: baosp-screenreader
 
       - name: Print commit being built
         run: |
-          cd andrdscren
-          echo "andrdscren commit:"
+          cd baosp-screenreader
+          echo "baosp-screenreader commit:"
           git log -1 --format="%H  %s  (%ci)"
           echo "ANDRDSCREN_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "ANDRDSCREN_MSG=$(git log -1 --format='%s')" >> $GITHUB_ENV
@@ -43,46 +45,47 @@ jobs:
         uses: android-actions/setup-android@v3
 
       - name: Grant Gradle execute permission
-        run: chmod +x andrdscren/gradlew
+        run: chmod +x baosp-screenreader/gradlew
 
       - name: Build APK
-        working-directory: andrdscren
+        working-directory: baosp-screenreader
         run: ./gradlew clean assembleDebug --no-daemon --stacktrace
 
       - name: Rename APK with version info
         run: |
-          APK=$(find andrdscren/app/build/outputs/apk/debug -name "*.apk" | head -1)
+          APK=$(find baosp-screenreader/app/build/outputs/apk/debug -name "*.apk" | head -1)
           mkdir -p /tmp/bundle
-          cp "$APK" "/tmp/bundle/andrdscren-${{ env.ANDRDSCREN_SHA }}.apk"
-          echo "Screen reader APK ready: $(ls -lh /tmp/bundle/andrdscren-*.apk)"
+          cp "$APK" "/tmp/bundle/baosp-screenreader-${{ env.ANDRDSCREN_SHA }}.apk"
+          echo "Screen reader APK ready: $(ls -lh /tmp/bundle/baosp-screenreader-*.apk)"
 
       - name: Upload screen reader APK
         uses: actions/upload-artifact@v4
         with:
           name: bundle-screenreader
-          path: /tmp/bundle/andrdscren-*.apk
+          path: /tmp/bundle/baosp-screenreader-*.apk
           retention-days: 3
           if-no-files-found: error
 
   # ──────────────────────────────────────────────
-  # Job 2: Build AOTTS TTS engine APK
+  # Job 2: Build baosp-tts TTS engine APK
   # ──────────────────────────────────────────────
-  build-aotts:
-    name: Build TTS Engine (aotts)
+  build-baosp-tts:
+    name: Build TTS Engine (baosp-tts)
     runs-on: ubuntu-22.04
+
     steps:
-      - name: Checkout aotts — latest main
+      - name: Checkout baosp-tts — latest main
         uses: actions/checkout@v4
         with:
-          repository: tech-master33/aotts
+          repository: tech-master33/baosp-tts
           ref: main
           fetch-depth: 0
-          path: aotts
+          path: baosp-tts
 
       - name: Print commit being built
         run: |
-          cd aotts
-          echo "aotts commit:"
+          cd baosp-tts
+          echo "baosp-tts commit:"
           git log -1 --format="%H  %s  (%ci)"
           echo "AOTTS_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
           echo "AOTTS_MSG=$(git log -1 --format='%s')" >> $GITHUB_ENV
@@ -102,7 +105,7 @@ jobs:
           echo "NDK_HOME=$ANDROID_SDK_ROOT/ndk/23.1.7779620" >> $GITHUB_ENV
 
       - name: Download SVOX Pico native source
-        working-directory: aotts
+        working-directory: baosp-tts
         run: |
           mkdir -p src/main/cpp/pico
           git clone --depth=1 \
@@ -111,7 +114,7 @@ jobs:
           cp -r /tmp/svox_src/pico/* src/main/cpp/pico/
 
       - name: Download SVOX Pico language data
-        working-directory: aotts
+        working-directory: baosp-tts
         run: |
           mkdir -p src/main/assets/lang
           SVOX_LANG="https://android.googlesource.com/platform/external/svox/+archive/refs/heads/master/pico/lang.tar.gz"
@@ -132,10 +135,10 @@ jobs:
           echo "Language files:"; ls -lh src/main/assets/lang/
 
       - name: Grant Gradle execute permission
-        run: chmod +x aotts/gradlew
+        run: chmod +x baosp-tts/gradlew
 
       - name: Build APK
-        working-directory: aotts
+        working-directory: baosp-tts
         run: |
           ./gradlew clean assembleDebug \
             -Pandroid.ndkVersion=23.1.7779620 \
@@ -143,98 +146,29 @@ jobs:
 
       - name: Rename APK with version info
         run: |
-          APK=$(find aotts/build/outputs/apk/debug -name "*.apk" | head -1)
+          APK=$(find baosp-tts/build/outputs/apk/debug -name "*.apk" | head -1)
           mkdir -p /tmp/bundle
-          cp "$APK" "/tmp/bundle/aotts-${{ env.AOTTS_SHA }}.apk"
-          echo "AOTTS APK ready: $(ls -lh /tmp/bundle/aotts-*.apk)"
+          cp "$APK" "/tmp/bundle/baosp-tts-${{ env.AOTTS_SHA }}.apk"
+          echo "AOTTS APK ready: $(ls -lh /tmp/bundle/baosp-tts-*.apk)"
 
       - name: Upload AOTTS APK
         uses: actions/upload-artifact@v4
         with:
-          name: bundle-aotts
-          path: /tmp/bundle/aotts-*.apk
+          name: bundle-baosp-tts
+          path: /tmp/bundle/baosp-tts-*.apk
           retention-days: 3
           if-no-files-found: error
 
   # ──────────────────────────────────────────────
-  # Job 3: Build aoler accessible launcher APK
-  # ──────────────────────────────────────────────
-  build-aoler:
-    name: Build Launcher (aoler)
-    runs-on: ubuntu-22.04
-    steps:
-      - name: Checkout aoler — latest main
-        uses: actions/checkout@v4
-        with:
-          repository: tech-master33/aoler
-          ref: main
-          fetch-depth: 0
-          path: aoler
-
-      - name: Print commit being built
-        run: |
-          cd aoler
-          echo "aoler commit:"
-          git log -1 --format="%H  %s  (%ci)"
-          echo "AOLER_SHA=$(git rev-parse --short HEAD)" >> $GITHUB_ENV
-          echo "AOLER_MSG=$(git log -1 --format='%s')" >> $GITHUB_ENV
-
-      - name: Set up JDK 17
-        uses: actions/setup-java@v4
-        with:
-          java-version: '17'
-          distribution: 'temurin'
-
-      - name: Set up Android SDK
-        uses: android-actions/setup-android@v3
-
-
-      - name: Generate debug keystore for release signing
-        run: |
-          mkdir -p $HOME/.android
-          if [ ! -f $HOME/.android/debug.keystore ]; then
-            keytool -genkeypair -v \
-              -keystore $HOME/.android/debug.keystore \
-              -alias androiddebugkey \
-              -keyalg RSA -keysize 2048 \
-              -validity 10000 \
-              -storepass android -keypass android \
-              -dname 'CN=Android Debug,O=Android,C=US'
-            echo 'Debug keystore created'
-          else
-            echo 'Debug keystore already exists'
-          fi
-      - name: Grant Gradle execute permission
-        run: chmod +x aoler/gradlew
-
-      - name: Build APK
-        working-directory: aoler
-        run: ./gradlew clean assembleRelease --no-daemon --stacktrace
-
-      - name: Rename APK with version info
-        run: |
-          APK=$(find aoler/app/build/outputs/apk/release -name "*.apk" | head -1)
-          mkdir -p /tmp/bundle
-          cp "$APK" "/tmp/bundle/aoler-${{ env.AOLER_SHA }}.apk"
-          echo "Launcher APK ready: $(ls -lh /tmp/bundle/aoler-*.apk)"
-
-      - name: Upload aoler APK
-        uses: actions/upload-artifact@v4
-        with:
-          name: bundle-aoler
-          path: /tmp/bundle/aoler-*.apk
-          retention-days: 3
-          if-no-files-found: error
-
-  # ──────────────────────────────────────────────
-  # Job 4: Publish combined nightly release
-  # Waits for all three builds, then creates a
-  # single "nightly" release with all three APKs.
+  # Job 3: Publish combined nightly release
+  # Waits for both builds, then creates/updates a
+  # single "nightly" release in the baosp repo
+  # with both APKs attached.
   # ──────────────────────────────────────────────
   publish-nightly:
     name: Publish Nightly Bundle Release
     runs-on: ubuntu-22.04
-    needs: [build-screenreader, build-aotts, build-aoler]
+    needs: [build-screenreader, build-baosp-tts]
 
     steps:
       - name: Download screen reader APK
@@ -246,13 +180,7 @@ jobs:
       - name: Download AOTTS APK
         uses: actions/download-artifact@v4
         with:
-          name: bundle-aotts
-          path: /tmp/release
-
-      - name: Download aoler APK
-        uses: actions/download-artifact@v4
-        with:
-          name: bundle-aoler
+          name: bundle-baosp-tts
           path: /tmp/release
 
       - name: List release files
@@ -263,6 +191,8 @@ jobs:
 
       - name: Delete existing nightly release (if any)
         run: |
+          # Remove the old "nightly" tag+release so we always have exactly
+          # one nightly release pointing to the latest build.
           RELEASE_ID=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
@@ -275,20 +205,20 @@ jobs:
               "https://api.github.com/repos/tech-master33/baosp/releases/$RELEASE_ID"
             echo "Deleted old nightly release (ID $RELEASE_ID)"
           fi
+          # Also delete the old tag
           curl -s -X DELETE \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/tech-master33/baosp/git/refs/tags/nightly" || true
 
-      - name: Collect recent commits from all repos
+      - name: Collect recent commits from both repos
         run: |
-          fetch_log() {
-            local repo=$1
-            curl -s \
-              -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
-              -H "Accept: application/vnd.github+json" \
-              "https://api.github.com/repos/$repo/commits?per_page=10" \
-              | python3 -c "
+          # Fetch last 10 commits from baosp-screenreader
+          ANDRDSCREN_LOG=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/tech-master33/baosp-screenreader/commits?per_page=10" \
+            | python3 -c "
           import json, sys
           commits = json.load(sys.stdin)
           lines = []
@@ -298,28 +228,58 @@ jobs:
               date = c['commit']['committer']['date'][:10]
               lines.append(f'- \`{sha}\` {msg} ({date})')
           print('\n'.join(lines))
-          " 2>/dev/null || echo "- No commits found"
-          }
+          " 2>/dev/null || echo "- No commits found")
 
-          ANDRDSCREN_LOG=$(fetch_log "tech-master33/andrdscren")
-          AOTTS_LOG=$(fetch_log "tech-master33/aotts")
-          AOLER_LOG=$(fetch_log "tech-master33/aoler")
+          # Fetch last 10 commits from baosp-tts
+          AOTTS_LOG=$(curl -s \
+            -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
+            -H "Accept: application/vnd.github+json" \
+            "https://api.github.com/repos/tech-master33/baosp-tts/commits?per_page=10" \
+            | python3 -c "
+          import json, sys
+          commits = json.load(sys.stdin)
+          lines = []
+          for c in commits:
+              sha = c['sha'][:7]
+              msg = c['commit']['message'].split('\n')[0]
+              date = c['commit']['committer']['date'][:10]
+              lines.append(f'- \`{sha}\` {msg} ({date})')
+          print('\n'.join(lines))
+          " 2>/dev/null || echo "- No commits found")
 
-          printf "## %s\n\n### Screen reader (andrdscren)\n%s\n\n### TTS engine (aotts)\n%s\n\n### Launcher (aoler)\n%s\n\n---\n" \
-            "$TODAY" "$ANDRDSCREN_LOG" "$AOTTS_LOG" "$AOLER_LOG" > /tmp/new_entry.md
+          # Write the new CHANGELOG entry to a temp file
+          cat > /tmp/new_entry.md << ENTRY
+          ## $TODAY
 
-          echo "Changelog entry:"; cat /tmp/new_entry.md
+          ### Screen reader (baosp-screenreader) — recent commits
+
+          ${ANDRDSCREN_LOG}
+
+          ### TTS engine (baosp-tts) — recent commits
+
+          ${AOTTS_LOG}
+
+          ---
+          ENTRY
+
+          echo "New changelog entry:"
+          cat /tmp/new_entry.md
 
       - name: Update CHANGELOG.md in baosp repo
         run: |
+          # Download current CHANGELOG.md
           RESPONSE=$(curl -s \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             "https://api.github.com/repos/tech-master33/baosp/contents/CHANGELOG.md")
+
           CURRENT_SHA=$(echo "$RESPONSE" | python3 -c \
             "import json,sys; d=json.load(sys.stdin); print(d.get('sha',''))" 2>/dev/null)
           CURRENT_CONTENT=$(echo "$RESPONSE" | python3 -c \
             "import json,sys,base64; d=json.load(sys.stdin); print(base64.b64decode(d.get('content','')).decode('utf-8','replace'))" 2>/dev/null)
+
+          # Insert new entry after the marker line, keeping all previous entries below
+          NEW_ENTRY=$(cat /tmp/new_entry.md)
           UPDATED=$(echo "$CURRENT_CONTENT" | python3 -c "
           import sys
           content = sys.stdin.read()
@@ -327,9 +287,11 @@ jobs:
           new_entry = open('/tmp/new_entry.md').read().strip()
           if marker in content:
               content = content.replace(marker, marker + '\n\n' + new_entry)
-          print(content, end='')
+          print(content)
           ")
-          ENCODED=$(printf '%s' "$UPDATED" | base64 -w 0)
+
+          # Base64-encode the updated content and push it back
+          ENCODED=$(echo "$UPDATED" | base64 -w 0)
           python3 -c "
           import json
           payload = {
@@ -337,18 +299,24 @@ jobs:
               'sha': '$CURRENT_SHA',
               'content': '$ENCODED'
           }
-          open('/tmp/changelog_payload.json', 'w').write(json.dumps(payload))
+          # write to file to avoid shell quoting issues
+          with open('/tmp/changelog_payload.json', 'w') as f:
+              json.dump(payload, f)
           "
-          curl -s -X PUT \
+
+          RESULT=$(curl -s -X PUT \
             -H "Authorization: Bearer ${{ secrets.GITHUB_TOKEN }}" \
             -H "Accept: application/vnd.github+json" \
             -H "Content-Type: application/json" \
             "https://api.github.com/repos/tech-master33/baosp/contents/CHANGELOG.md" \
-            --data-binary @/tmp/changelog_payload.json | python3 -c \
-            "import json,sys; d=json.load(sys.stdin); print(d.get('commit',{}).get('html_url','error: '+str(d.get('message',d))))" \
-            2>/dev/null
+            --data-binary @/tmp/changelog_payload.json)
 
-      - name: Create nightly release with all three APKs
+          echo "CHANGELOG update result:"
+          echo "$RESULT" | python3 -c \
+            "import json,sys; d=json.load(sys.stdin); print(d.get('commit',{}).get('html_url','error: ' + str(d.get('message',d))))" \
+            2>/dev/null || echo "$RESULT" | head -5
+
+      - name: Create nightly release with both APKs
         uses: softprops/action-gh-release@v2
         with:
           tag_name: nightly
@@ -357,7 +325,8 @@ jobs:
           body: |
             ## BAOSP Nightly Bundle — ${{ env.TODAY }}
 
-            Updated automatically every night with the latest builds of all three components.
+            This release is updated automatically every night with the latest builds
+            of both the screen reader and TTS engine.
 
             Full commit history: [CHANGELOG.md](https://github.com/tech-master33/baosp/blob/main/CHANGELOG.md)
 
@@ -365,20 +334,19 @@ jobs:
 
             | File | Description |
             |------|-------------|
-            | `andrdscren-*.apk` | Screen reader — enable in Accessibility settings |
-            | `aotts-*.apk` | TTS engine (SVOX Pico) — set as default TTS |
-            | `aoler-*.apk` | Accessible home screen launcher |
+            | `baosp-screenreader-*.apk` | Screen reader (baosp-screenreader) |
+            | `baosp-tts-*.apk` | TTS engine with SVOX Pico voice data |
 
-            ### How to install
+            ### How to install on your Android device
 
-            1. Download all three APKs below
-            2. Transfer to your device and install (allow "unknown sources")
-            3. **Screen reader:** Settings → Accessibility → Downloaded services → andrdscren → enable
-            4. **TTS engine:** Settings → Language & input → Text-to-speech output → select AOTTS Pico
-            5. **Launcher:** Press Home → select **aoler** → tap **Always**
+            1. Download both APKs from the files below
+            2. Transfer them to your device (email, cloud drive, USB)
+            3. Install each APK — allow "unknown sources" if prompted
+            4. **Enable screen reader:** Settings → Accessibility → Downloaded services → baosp-screenreader → turn on
+            5. **Set TTS engine:** Settings → Language & input → Text-to-speech output → select BAOSP TTS
 
             ---
-            *Built from the latest commit on each repo's main branch.*
+            *Built automatically from the latest commit on each repo's main branch.*
           files: |
             /tmp/release/*.apk
         env:
